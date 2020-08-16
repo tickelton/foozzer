@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 
+import os
 import sys
 import subprocess
 import pyautogui
 from time import sleep
+from shutil import copyfile
 from subprocess import PIPE, STDOUT, Popen
 from threading  import Thread
 from queue import Queue, Empty
@@ -14,16 +16,18 @@ VALGRIND = '/usr/bin/valgrind'
 XTERM = '/usr/bin/xterm'
 LS = '/usr/bin/ls'
 FOOBAR = r'C:\Program Files (x86)\foobar2000\foobar2000.exe'
+DRMEMORY = r'C:\Program Files (x86)\Dr. Memory\bin\drmemory.exe'
 
 # playlists
 PL_GARBAGE = r'D:\Workspace\foobar_fuzzing\in\garbage.fpl'
 PL_GENERIC = r'D:\Workspace\foobar_fuzzing\in\generic.fpl'
 PL_FUZZ = r'D:\Workspace\foobar_fuzzing\in\fuzz_pl.fpl'
+PL_TEMPLATE = r'D:\Workspace\foobar_fuzzing\in\fuzzing_base.fpl'
 
 # buttons
 NEW_PLAYLIST = r'D:\Workspace\foozzer\images\new_playlist.png'
 RM_PL = r'D:\Workspace\foozzer\images\remove_playlist.png'
-TITLE_INFORMATION = r'D:\Workspace\foozzer\images\information.png'
+TITLE_INFORMATION = r'D:\Workspace\foozzer\images\information2.png'
 LOAD_PL = r'D:\Workspace\foozzer\images\load_playlist.png'
 MENU_FILE = r'D:\Workspace\foozzer\images\file.png'
 MENU_FUZZ_PL = r'D:\Workspace\foozzer\images\fuzz_pl.png'
@@ -33,6 +37,8 @@ CMD_STOP = '/stop'
 CMD_LOAD_PL = '/command:"Load playlist..."'
 
 # misc constants
+RUNFILE = r'D:\Temp\foozzer.run'
+LOG_OUTFILE = r'D:\Workspace\foobar_fuzzing\out\log.txt'
 PL_FUZZ_NAME = 'fuzz_pl.fpl'
 ON_POSIX = 'posix' in sys.builtin_module_names
 
@@ -45,6 +51,7 @@ def del_pl(btn_pl_img):
     if btn_pl:
         btn_pl_center = pyautogui.center(btn_pl)
         pyautogui.click(button='right', x=btn_pl_center.x, y=btn_pl_center.y)
+        sleep(1)
         del_pl = pyautogui.locateOnScreen(RM_PL)
         del_pl_center = pyautogui.center(del_pl)
         pyautogui.click(x=del_pl_center.x, y=del_pl_center.y)
@@ -54,9 +61,11 @@ def load_pl(pl_name):
     if btn_file:
         btn_file_center = pyautogui.center(btn_file)
         pyautogui.click(x=btn_file_center.x, y=btn_file_center.y)
+        sleep(1)
         btn_load = pyautogui.locateOnScreen(LOAD_PL)
         btn_load_center = pyautogui.center(btn_load)
         pyautogui.click(x=btn_load_center.x, y=btn_load_center.y)
+        sleep(1)
         pyautogui.write(pl_name)
         pyautogui.press('enter')
 
@@ -120,7 +129,10 @@ class FPLInFile:
 
     def next(self):
         if self.template_offset > self.template_size - 1:
-            return 2
+            return (-1, -1)
+
+        t_cur = self.template_offset
+        m_cur = self.mod_offset
 
         with open(self.outpath, 'wb') as outfile:
 
@@ -133,25 +145,105 @@ class FPLInFile:
         if self.mod_offset == 0:
             self.template_offset += 1
 
+        return (t_cur, m_cur)
+
 def main():
-    p = Popen([VALGRIND, XTERM], stdout=PIPE, stderr=STDOUT, bufsize=1, universal_newlines=True, close_fds=ON_POSIX)
+    p = Popen([DRMEMORY, FOOBAR], stdout=PIPE, stderr=STDOUT, bufsize=1, universal_newlines=True, close_fds=ON_POSIX)
     q = Queue()
     t = Thread(target=enqueue_output, args=(p.stdout, q))
     t.daemon = True # thread dies with the program
     t.start()
     
-    
+    sleep(25)
+    if p.poll() != None:
+        print('SOMETHING WENT WRONG!!')
+        sys.exit(1)
+
+    print('Opening logfile')
+    log_outfile = open(LOG_OUTFILE, 'a')
+    print('FPLInFILE()')
+    fpl = FPLInFile(PL_FUZZ, PL_TEMPLATE)
+
     i = 0
+    print('Clearing queue initially')
     while True:
-        print(i)
         # read line without blocking
         try:  line = q.get_nowait() # or q.get(timeout=.1)
         except Empty:
-            pass
+            break
         else: # got line
-            print(line)
-        i += 1
+            log_outfile.write(line)
+
+    print('Waiting for start')
+    while not pyautogui.locateOnScreen(MENU_FILE):
         sleep(1)
+    print('Dry run')
+    log_outfile.flush()
+    log_outfile.write('FOOZZER: DRY RUN\n')
+    log_outfile.flush()
+    print('copying generic playlist')
+    copyfile(PL_GENERIC, PL_FUZZ)
+    print('loading playlist')
+    load_pl(PL_FUZZ_NAME)
+    sleep(30)
+    print('checking for info window')
+    close_info()
+    sleep(5)
+    print('closing playlist')
+    del_pl(MENU_FUZZ_PL)
+
+    print('MAINLOOP START')
+    while os.path.isfile(RUNFILE):
+        print('clearing queue')
+        while True:
+            try:  line = q.get_nowait()
+            except Empty:
+                break
+            else:
+                log_outfile.write(line)
+
+        print('checking if Dr.Memory is still running')
+        if p.poll() != None:
+            print('RESTARTING Dr.Memory')
+            t.join()
+            p = Popen([DRMEMORY, FOOBAR], stdout=PIPE, stderr=STDOUT, bufsize=1, universal_newlines=True, close_fds=ON_POSIX)
+            t = Thread(target=enqueue_output, args=(p.stdout, q))
+            t.daemon = True
+            t.start()
+
+        print('fpl.next()')
+        fpl_iteration = fpl.next()
+        if fpl_iteration == (-1, -1):
+            print('mutations exhausted; exitin')
+            break
+        print('Iteration: t_offset={} mod_offset={}\n'.format(fpl_iteration[0], fpl_iteration[1]))
+        log_outfile.flush()
+        log_outfile.write('FOOZZER: Iteration: t_offset={} mod_offset={}\n'.format(fpl_iteration[0], fpl_iteration[1]))
+        log_outfile.flush()
+        print('loading playlist')
+        load_pl(PL_FUZZ_NAME)
+        sleep(10)
+        print('closing info window')
+        close_info()
+        sleep(3)
+        print('closing playlist')
+        del_pl(MENU_FUZZ_PL)
+
+        i += 1
+
+    print('MAINLOOP END')
+    if p.poll() == None:
+        print('terminating')
+        p.terminate()
+    sleep(2)
+    print('joining')
+    t.join()
+    log_outfile.flush()
+    log_outfile.write('FOOZZER: FINISHED')
+    log_outfile.close()
+    print('FINISHED')
+
+
 
 if __name__ == '__main__':
     main()
