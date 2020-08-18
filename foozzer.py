@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import os
+import re
 import sys
 import subprocess
 import pyautogui
@@ -23,7 +24,8 @@ DRMEMORY_PARAMS = r'-batch'
 PL_GARBAGE = r'D:\Workspace\foobar_fuzzing\in\garbage.fpl'
 PL_GENERIC = r'D:\Workspace\foobar_fuzzing\in\generic.fpl'
 PL_FUZZ = r'D:\Workspace\foobar_fuzzing\in\fuzz_pl.fpl'
-PL_TEMPLATE = r'D:\Workspace\foobar_fuzzing\in\fuzzing_base.fpl'
+#PL_TEMPLATE = r'D:\Workspace\foobar_fuzzing\in\fuzzing_base.fpl'
+PL_TEMPLATE = r'D:\Workspace\foobar_fuzzing\in\fuzzing_minimal.fpl'
 
 # buttons
 NEW_PLAYLIST = r'D:\Workspace\foozzer\images\new_playlist.png'
@@ -41,6 +43,7 @@ CMD_LOAD_PL = '/command:"Load playlist..."'
 
 # misc constants
 RUNFILE = r'D:\Temp\foozzer.run'
+STATE_FILE = r'D:\Workspace\foobar_fuzzing\out\state.txt'
 LOG_OUTFILE = r'D:\Workspace\foobar_fuzzing\out\log.txt'
 PL_FUZZ_NAME = 'fuzz_pl.fpl'
 ON_POSIX = 'posix' in sys.builtin_module_names
@@ -82,7 +85,7 @@ def reset_playlists():
         del_pl(MENU_FUZZ_PL)
         sleep(1)
 
-def gui_wait_start():
+def gui_wait_start(log_fd):
     i = 0
 
     while not pyautogui.locateOnScreen(MENU_FILE) and not pyautogui.locateOnScreen(START_NORMALLY):
@@ -94,6 +97,7 @@ def gui_wait_start():
 
     pos = pyautogui.locateOnScreen(START_NORMALLY)
     if pos:
+        log_fd.write('ABNORMAL TERMINATION ! POTENTIAL BUG !!')
         pos_center = pyautogui.center(pos)
         pyautogui.click(x=pos_center.x, y=pos_center.y)
         gui_wait_for(MENU_FILE)
@@ -131,37 +135,49 @@ class FPLInFile:
     byte_mods = [
         b'\x00',
         b'\x01',
+        b'\x41',
         b'\xff',
-        b'\x00\x00',
-        b'\x00\x01',
-        b'\x01\x00',
-        b'\x00\xff',
-        b'\xff\x00',
-        b'\xff\xff',
-        b'\x00\x00\x00',
-        b'\x00\x00\x01',
-        b'\x01\x00\x00',
-        b'\x00\x00\xff',
-        b'\xff\x00\x00',
-        b'\x00\xff\xff',
-        b'\xff\xff\x00',
-        b'\xff\xff\xff',
-        b'\x00\x00\x00\x00',
-        b'\x00\x00\x00\x01',
-        b'\x01\x00\x00\x00',
-        b'\x00\x00\x00\xff',
-        b'\xff\x00\x00\x00',
-        b'\x00\x00\xff\xff',
-        b'\xff\xff\x00\x00',
-        b'\xff\xff\xff\x00',
-        b'\x00\xff\xff\xff',
-        b'\xff\xff\xff\xff',
+#        b'\x00\x00',
+#        b'\x00\x01',
+#        b'\x01\x00',
+#        b'\x00\xff',
+#        b'\xff\x00',
+#        b'\xff\xff',
+#        b'\x00\x00\x00',
+#        b'\x00\x00\x01',
+#        b'\x01\x00\x00',
+#        b'\x00\x00\xff',
+#        b'\xff\x00\x00',
+#        b'\x00\xff\xff',
+#        b'\xff\xff\x00',
+#        b'\xff\xff\xff',
+#        b'\x00\x00\x00\x00',
+#        b'\x00\x00\x00\x01',
+#        b'\x01\x00\x00\x00',
+#        b'\x00\x00\x00\xff',
+#        b'\xff\x00\x00\x00',
+#        b'\x00\x00\xff\xff',
+#        b'\xff\xff\x00\x00',
+#        b'\xff\xff\xff\x00',
+#        b'\x00\xff\xff\xff',
+#        b'\xff\xff\xff\xff',
     ]
 
     template_offset = 0
     mod_offset = 0
 
     def __init__(self, outpath, template_path):
+        if os.path.isfile(STATE_FILE):
+            with open(STATE_FILE, 'r') as state_fp:
+                for line in state_fp.readlines():
+                    match = re.search(r't_cur=(\d+)', line)
+                    if match:
+                        self.template_offset = int(match.group(1))
+                        continue
+                    match = re.search(r'm_cur=(\d+)', line)
+                    if match:
+                        self.mod_offset = int(match.group(1))
+                        continue
         self.outpath = outpath
         with open(template_path, 'rb') as infile:
             self.template = infile.read()
@@ -184,6 +200,9 @@ class FPLInFile:
         self.mod_offset = (self.mod_offset + 1 ) % len(self.byte_mods)
         if self.mod_offset == 0:
             self.template_offset += 1
+
+        with open(STATE_FILE, 'w') as fd:
+            fd.write('t_cur={}\nm_cur={}\n'.format(t_cur, m_cur))
 
         return (t_cur, m_cur)
 
@@ -236,7 +255,7 @@ def main():
     clear_queue(q, log_outfile)
 
     print('Waiting for start')
-    gui_wait_start()
+    gui_wait_start(log_outfile)
     print('Resetting playlists')
     reset_playlists()
     print('Dry run')
@@ -263,7 +282,7 @@ def main():
                 print('RESTARTING Dr.Memory')
                 stopall(t)
                 p, t = startall(q)
-                gui_wait_start()
+                gui_wait_start(log_outfile)
 
             print('fpl.next()')
             fpl_iteration = fpl.next()
@@ -288,7 +307,7 @@ def main():
                 p.terminate()
             stopall(t)
             p, t = startall(q)
-            gui_wait_start()
+            gui_wait_start(log_outfile)
 
         i += 1
 
