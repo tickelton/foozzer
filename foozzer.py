@@ -43,6 +43,7 @@ CMD_LOAD_PL = '/command:"Load playlist..."'
 
 # misc constants
 RUNFILE = r'D:\Temp\foozzer.run'
+PAUSEFILE = r'D:\Temp\foozzer.pause'
 STATE_FILE = r'D:\Workspace\foobar_fuzzing\out\state.txt'
 LOG_OUTFILE = r'D:\Workspace\foobar_fuzzing\out\log.txt'
 PL_FUZZ_NAME = 'fuzz_pl.fpl'
@@ -74,7 +75,7 @@ def load_pl(pl_name):
     pyautogui.press('enter')
 
 def close_info():
-    for i in range(3):
+    for i in range(2):
         win_info = pyautogui.locateOnScreen(TITLE_INFORMATION)
         if win_info:
             pyautogui.click(x=win_info.left+win_info.width-5, y=win_info.top+5)
@@ -283,6 +284,11 @@ def main():
                 stopall(t)
                 p, t = startall(q)
                 gui_wait_start(log_outfile)
+
+            if os.path.isfile(PAUSEFILE):
+                print('pausing...')
+            while os.path.isfile(PAUSEFILE):
+                sleep(1)
 
             print('fpl.next()')
             fpl_iteration = fpl.next()
