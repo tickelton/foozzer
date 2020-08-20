@@ -31,7 +31,7 @@ PL_TEMPLATE = r'D:\Workspace\foobar_fuzzing\in\fuzzing_minimal.fpl'
 NEW_PLAYLIST = r'D:\Workspace\foozzer\images\new_playlist.png'
 RM_PL = r'D:\Workspace\foozzer\images\remove_playlist.png'
 START_NORMALLY = r'D:\Workspace\foozzer\images\start_normally.png'
-TITLE_INFORMATION = r'D:\Workspace\foozzer\images\information2.png'
+TITLE_INFORMATION = r'D:\Workspace\foozzer\images\information3.png'
 LOAD_PL = r'D:\Workspace\foozzer\images\load_playlist.png'
 WINDOW_LOAD_PL = r'D:\Workspace\foozzer\images\window_load_playlist.png'
 MENU_FILE = r'D:\Workspace\foozzer\images\file.png'
@@ -75,7 +75,7 @@ def load_pl(pl_name):
     pyautogui.press('enter')
 
 def close_info():
-    for i in range(2):
+    for i in range(3):
         win_info = pyautogui.locateOnScreen(TITLE_INFORMATION)
         if win_info:
             pyautogui.click(x=win_info.left+win_info.width-5, y=win_info.top+5)
