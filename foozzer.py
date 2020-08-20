@@ -3,13 +3,20 @@
 import os
 import re
 import sys
+import argparse
 import subprocess
 import pyautogui
+import importlib
+import pkgutil
+
+import foozzer.mutators
+
 from time import sleep
 from shutil import copyfile
 from subprocess import PIPE, STDOUT, Popen
 from threading  import Thread
 from queue import Queue, Empty
+
 
 
 # binaries
@@ -239,7 +246,32 @@ def clear_queue(q, outfile):
         else: # got line
             outfile.write(line)
 
+def iter_namespace(ns_pkg):
+    return pkgutil.iter_modules(ns_pkg.__path__, ns_pkg.__name__ + ".")
+
+def discover_mutators():
+    mutators = {}
+
+    for finder, name, ispkg in iter_namespace(foozzer.mutators):
+        mutators.update(importlib.import_module(name).get_module_info())
+
+    return mutators
+
 def main():
+
+    mutators = discover_mutators()
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        '-m',
+        required=True,
+        choices = [m for m in mutators.keys()],
+        help='mutator to use'
+    )
+    args = parser.parse_args()
+
+    playlist_mutator = mutators[args.m]
+
     stop_processes()
 
     q = Queue()
@@ -249,7 +281,7 @@ def main():
     print('Opening logfile')
     log_outfile = open(LOG_OUTFILE, 'a')
     print('FPLInFILE()')
-    fpl = FPLInFile(PL_FUZZ, PL_TEMPLATE)
+    fpl = playlist_mutator(PL_FUZZ, PL_TEMPLATE)
 
     i = 0
     print('Clearing queue initially')
