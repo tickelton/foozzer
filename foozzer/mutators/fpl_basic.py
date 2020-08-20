@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 
+import os
+import re
+
 MUTATOR_NAME = 'fpl_basic'
+STATE_FILE = r'D:\Workspace\foobar_fuzzing\out\state.txt'
 
 def get_module_info():
     return {MUTATOR_NAME: FPLInFile}
@@ -13,30 +17,6 @@ class FPLInFile:
         b'\x01',
         b'\x41',
         b'\xff',
-#        b'\x00\x00',
-#        b'\x00\x01',
-#        b'\x01\x00',
-#        b'\x00\xff',
-#        b'\xff\x00',
-#        b'\xff\xff',
-#        b'\x00\x00\x00',
-#        b'\x00\x00\x01',
-#        b'\x01\x00\x00',
-#        b'\x00\x00\xff',
-#        b'\xff\x00\x00',
-#        b'\x00\xff\xff',
-#        b'\xff\xff\x00',
-#        b'\xff\xff\xff',
-#        b'\x00\x00\x00\x00',
-#        b'\x00\x00\x00\x01',
-#        b'\x01\x00\x00\x00',
-#        b'\x00\x00\x00\xff',
-#        b'\xff\x00\x00\x00',
-#        b'\x00\x00\xff\xff',
-#        b'\xff\xff\x00\x00',
-#        b'\xff\xff\xff\x00',
-#        b'\x00\xff\xff\xff',
-#        b'\xff\xff\xff\xff',
     ]
 
     template_offset = 0
