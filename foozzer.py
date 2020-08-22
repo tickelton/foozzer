@@ -5,7 +5,7 @@ import re
 import sys
 import argparse
 import subprocess
-import pyautogui
+#import pyautogui
 import importlib
 import pkgutil
 
@@ -180,11 +180,29 @@ def discover_mutators():
 
     return mutators
 
+class ActionListMutators(argparse.Action):
+	def __init__(self, option_strings, dest, const, **kwargs):
+		self._descriptions = const
+		super(ActionListMutators, self).__init__(option_strings, dest, **kwargs)
+	def __call__(self, parser, namespace, values, option_string=None):
+		print('\navailable mutators:\n')
+		for k in self._descriptions.keys():
+			print('  {} : {}'.format(k, self._descriptions[k]))
+		print('')
+		sys.exit(0)
+
 def main():
 
     mutators = discover_mutators()
 
     parser = argparse.ArgumentParser()
+    parser.add_argument(
+		'-L',
+		nargs=0,
+		action=ActionListMutators,
+		help='describe available mutators',
+		const={n: mutators[n][0] for n in mutators.keys()}
+	)
     parser.add_argument(
         '-m',
         required=True,
@@ -193,7 +211,7 @@ def main():
     )
     args = parser.parse_args()
 
-    playlist_mutator = mutators[args.m]
+    playlist_mutator = mutators[args.m][1]
 
     stop_processes()
 
