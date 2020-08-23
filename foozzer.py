@@ -8,6 +8,7 @@ import subprocess
 #import pyautogui
 import importlib
 import pkgutil
+import logging
 
 import foozzer.mutators
 
@@ -57,6 +58,15 @@ PL_FUZZ_NAME = 'fuzz_pl.fpl'
 ON_POSIX = 'posix' in sys.builtin_module_names
 GUI_CHECK_INTERVAL = 0.1 # time to wait in between checks for UI element
 GUI_CHECK_TIMEOUT = 30 # max number of GUI_CHECK_INTERVAL iterations
+
+# logging configuration
+logger = logging.getLogger()
+handler = logging.StreamHandler()
+formatter = logging.Formatter(
+    '%(asctime)s %(name)-12s %(levelname)-8s %(message)s')
+handler.setFormatter(formatter)
+logger.addHandler(handler)
+logger.setLevel(logging.ERROR)
 
 
 def run_cmd(cmd_str):
@@ -144,7 +154,7 @@ def startall(q):
     t.start()
     sleep(1)
     if p.poll() != None:
-        print('SOMETHING WENT WRONG!!')
+        logger.error('SOMETHING WENT WRONG!!')
         t.join()
         sys.exit(1)
 
@@ -196,6 +206,7 @@ def main():
     mutators = discover_mutators()
 
     parser = argparse.ArgumentParser()
+    parser.add_argument('--verbose', '-v', action='count', default=0)
     parser.add_argument(
 		'-L',
 		nargs=0,
@@ -210,6 +221,12 @@ def main():
         help='mutator to use'
     )
     args = parser.parse_args()
+    if args.verbose == 1:
+        logger.setLevel(logging.WARNING)
+    elif args.verbose == 2:
+        logger.setLevel(logging.INFO)
+    elif args.verbose > 2:
+        logger.setLevel(logging.DEBUG)
 
     playlist_mutator = mutators[args.m][1]
 
@@ -219,68 +236,68 @@ def main():
 
     p, t = startall(q)
 
-    print('Opening logfile')
+    logger.info('Opening logfile')
     log_outfile = open(LOG_OUTFILE, 'a')
-    print('FPLInFILE()')
+    logger.debug('FPLInFILE()')
     fpl = playlist_mutator(PL_FUZZ, PL_TEMPLATE)
 
     i = 0
-    print('Clearing queue initially')
+    logger.debug('Clearing queue initially')
     clear_queue(q, log_outfile)
 
-    print('Waiting for start')
+    logger.info('Waiting for start')
     gui_wait_start(log_outfile)
-    print('Resetting playlists')
+    logger.debug('Resetting playlists')
     reset_playlists()
-    print('Dry run')
+    logger.info('Dry run')
     log_outfile.flush()
     log_outfile.write('FOOZZER: DRY RUN\n')
     log_outfile.flush()
-    print('copying generic playlist')
+    logger.debug('copying generic playlist')
     copyfile(PL_GENERIC, PL_FUZZ)
-    print('loading playlist')
+    logger.debug('loading playlist')
     load_pl(PL_FUZZ_NAME)
-    print('checking for info window')
+    logger.debug('checking for info window')
     close_info()
-    print('closing playlist')
+    logger.debug('closing playlist')
     del_pl(MENU_FUZZ_PL)
 
-    print('MAINLOOP START')
+    logger.info('MAINLOOP START')
     while os.path.isfile(RUNFILE):
         try:
-            print('clearing queue')
+            logger.debug('clearing queue')
             clear_queue(q, log_outfile)
 
-            print('checking if Dr.Memory is still running')
+            logger.debug('checking if Dr.Memory is still running')
             if p.poll() != None:
-                print('RESTARTING Dr.Memory')
+                logger.info('RESTARTING Dr.Memory')
                 stopall(t)
                 p, t = startall(q)
                 gui_wait_start(log_outfile)
 
             if os.path.isfile(PAUSEFILE):
-                print('pausing...')
+                logger.info('pausing...')
             while os.path.isfile(PAUSEFILE):
                 sleep(1)
 
-            print('fpl.next()')
+            logger.debug('fpl.next()')
             fpl_iteration = fpl.next()
             if fpl_iteration == (-1, -1):
-                print('mutations exhausted; exiting')
+                logger.info('mutations exhausted; exiting')
                 break
-            print('Iteration: t_offset={} mod_offset={}\n'.format(fpl_iteration[0], fpl_iteration[1]))
+            logger.debug('Iteration: t_offset={} mod_offset={}\n'.format(fpl_iteration[0], fpl_iteration[1]))
             log_outfile.flush()
             log_outfile.write('FOOZZER: Iteration: t_offset={} mod_offset={}\n'.format(fpl_iteration[0], fpl_iteration[1]))
             log_outfile.flush()
-            print('loading playlist')
+            logger.debug('loading playlist')
             load_pl(PL_FUZZ_NAME)
-            print('closing info window')
+            logger.debug('closing info window')
             close_info()
-            print('closing playlist')
+            logger.debug('closing playlist')
             del_pl(MENU_FUZZ_PL)
         except FoozzerUIError as e:
             log_outfile.write('Resetting after UIError: {}'.format(e))
-            print('Resetting after UIError: {}'.format(e))
+            logger.warning('Resetting after UIError: {}'.format(e))
             clear_queue(q, log_outfile)
             if p.poll() == None:
                 p.terminate()
@@ -290,9 +307,9 @@ def main():
 
         i += 1
 
-    print('MAINLOOP END')
+    logger.info('MAINLOOP END')
     if p.poll() == None:
-        print('terminating')
+        logger.debug('terminating')
         p.terminate()
         stopall(t)
 
@@ -300,7 +317,7 @@ def main():
     log_outfile.flush()
     log_outfile.write('FOOZZER: FINISHED')
     log_outfile.close()
-    print('FINISHED')
+    logger.info('FINISHED')
 
 
 
