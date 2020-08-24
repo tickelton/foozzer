@@ -2,6 +2,7 @@
 
 import os
 import re
+import configparser
 import logging
 
 MUTATOR_NAME = 'fpl_basic'
@@ -30,33 +31,21 @@ class FPLBasicMutator:
     _infile_path = ''
     _infiles_processed = []
     _processing_finished = False
+    _state = configparser.ConfigParser()
 
     def __init__(self, indir, outdir):
         self._state_file_path = os.path.join(outdir, STATE_FILE_NAME)
         self._outdir = outdir 
         self._outpath = os.path.join(outdir, OUTFILE_NAME)
         self._indir = indir
+        self._state.read(self._state_file_path)
 
-        if os.path.isfile(self._state_file_path):
-            with open(self._state_file_path, 'r') as fd:
-                for line in fd.readlines():
-                    match = re.search(r'offset=(\d+)', line)
-                    if match:
-                        self._offset = int(match.group(1))
-                        continue
-                    match = re.search(r'mod=(\d+)', line)
-                    if match:
-                        self._mod = int(match.group(1))
-                        continue
-                    match = re.search(r'infile=([a-zA-Z0-9_\.]+)', line)
-                    if match:
-                        self._infile_name = match.group(1)
-                        self._infile_path = os.path.join(indir, self._infile_name)
-                        continue
-                    match = re.search(r'completed=([a-zA-Z0-9_\.]+)', line)
-                    if match:
-                        self._infiles_processed.append(match.group(1))
-                        continue
+        self._offset = self._state['DEFAULT'].getint('offset', 0)
+        self._mod = self._state['DEFAULT'].getint('mod', 0)
+        self._infile_name = self._state['DEFAULT'].get('infile', '')
+        if self._infile_name:
+            self._infile_path = os.path.join(indir, self._infile_name)
+        self._infiles_processed = self._state['DEFAULT'].get('completed', '').split(sep='\n')
 
         if  self._infile_path and os.path.isfile(self._infile_path):
             self._read_infile()
@@ -91,12 +80,13 @@ class FPLBasicMutator:
         return OUTFILE_NAME, s_cur
 
     def _write_state(self):
+        self._state['DEFAULT']['offset'] = str(self._offset)
+        self._state['DEFAULT']['mod'] = str(self._mod)
+        self._state['DEFAULT']['infile'] = self._infile_name
+        self._state['DEFAULT']['completed'] = '\n'.join(self._infiles_processed)
+
         with open(self._state_file_path, 'w') as fd:
-            fd.write('offset={}\n'.format(self._offset))
-            fd.write('mod={}\n'.format(self._mod))
-            fd.write('infile={}\n'.format(self._infile_name))
-            for f in self._infiles_processed:
-                fd.write('completed={}\n'.format(f))
+            self._state.write(fd)
 
     def _next_infile(self):
         if self._infile_name:

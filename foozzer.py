@@ -5,7 +5,7 @@ import re
 import sys
 import argparse
 import subprocess
-#import pyautogui
+import pyautogui
 import importlib
 import pkgutil
 import logging
