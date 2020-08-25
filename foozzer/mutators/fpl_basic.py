@@ -24,16 +24,11 @@ class FPLBasicMutator:
         b'\xff',
     ]
 
-    _offset = 0
-    _mod = 0
-    _infile_size = 0
-    _infile_name = ''
-    _infile_path = ''
-    _infiles_processed = []
-    _processing_finished = False
-    _state = configparser.ConfigParser()
-
     def __init__(self, indir, outdir):
+        self._infile_size = 0
+        self._processing_finished = False
+        self._infile_path = None
+        self._state = configparser.ConfigParser()
         self._state_file_path = os.path.join(outdir, STATE_FILE_NAME)
         self._outdir = outdir 
         self._outpath = os.path.join(outdir, OUTFILE_NAME)
@@ -42,19 +37,24 @@ class FPLBasicMutator:
 
         self._offset = self._state['DEFAULT'].getint('offset', 0)
         self._mod = self._state['DEFAULT'].getint('mod', 0)
+        if self._mod > len(self._byte_mods) -1:
+            raise ValueError('mod index out of range; state file for wrong mutator ?')
         self._infile_name = self._state['DEFAULT'].get('infile', '')
         if self._infile_name:
             self._infile_path = os.path.join(indir, self._infile_name)
         self._infiles_processed = self._state['DEFAULT'].get('completed', '').split(sep='\n')
 
-        if  self._infile_path and os.path.isfile(self._infile_path):
+        if self._infile_path and os.path.isfile(self._infile_path):
             self._read_infile()
 
     def __iter__(self):
         return self
 
     def __next__(self):
-        if self._offset > self._infile_size - 1 or not self._infile_path or not os.path.isfile(self._infile_path):
+        if (self._offset > self._infile_size - 1 or
+                not self._infile_path or
+                not os.path.isfile(self._infile_path) or
+                self._infile_name in self._infiles_processed):
             self._next_infile()
             if self._processing_finished:
                 self._write_state()
@@ -89,7 +89,7 @@ class FPLBasicMutator:
             self._state.write(fd)
 
     def _next_infile(self):
-        if self._infile_name:
+        if self._infile_name and not self._infile_name in self._infiles_processed:
             self._infiles_processed.append(self._infile_name)
         for (fname, fpath) in ((f, os.path.join(self._indir, f)) for f in os.listdir(self._indir)):
             if os.path.isfile(fpath) and fname not in self._infiles_processed:
