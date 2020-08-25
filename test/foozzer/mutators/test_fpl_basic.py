@@ -68,6 +68,8 @@ class FPLBasicMutatorTests(unittest.TestCase):
         m = foozzer.mutators.fpl_basic.FPLBasicMutator(self._indir, self._outdir)
         i = 0
         for x in m:
+            self.assertEqual(x[0], 'fuzz_pl.fpl')
+            self.assertEqual(x[1], 'infile={} offset=0, mod={}'.format(INFILE_NAME, i))
             i += 1
             sf = self._read_state()
             if i == 4:
@@ -164,5 +166,25 @@ class FPLBasicMutatorTests(unittest.TestCase):
         #       Maybe this should be two calls to assertIn() ?
         self.assertEqual(sf['DEFAULT']['completed'].split(sep='\n'), ['', INFILE2_NAME, INFILE_NAME])
 
-# TODO: test empty file
-#       test iterator return value !
+    def test_empty_infile(self):
+        self._create_infile_stub(size=0)
+        m = foozzer.mutators.fpl_basic.FPLBasicMutator(self._indir, self._outdir)
+        i = 0
+        for x in m:
+            i += 1
+
+        # Even though the input file is empty, the first single-byte mutation is performed.
+        # This works because 1k of garbage data is concatenated onto the file but somehow
+        # does not feel like the right approach.
+        # Skipping empty files is probably equally wrong since an empty file might
+        # be a valid input.
+        # A better approach could be to do an initial run with the unmodified, empty file
+        # and then abort since there is not really a valid mutation of an empty file.
+        # Alternatively the empty file could simply be replaced by the garbage data
+        # that is used to extend non-empty files.
+        self.assertEqual(i, 1)
+        sf = self._read_state()
+        self.assertEqual(sf['DEFAULT'].getint('offset'), 0)
+        self.assertEqual(sf['DEFAULT'].getint('mod'), 1)
+        self.assertEqual(sf['DEFAULT']['completed'].split(sep='\n'), ['', INFILE_NAME])
+
