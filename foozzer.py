@@ -5,12 +5,13 @@ import re
 import sys
 import argparse
 import subprocess
-import pyautogui
+#import pyautogui
 import importlib
 import pkgutil
 import logging
 
 import foozzer.mutators
+import foozzer.runners
 
 from time import sleep
 from shutil import copyfile
@@ -182,14 +183,6 @@ def clear_queue(q, outfile):
 def iter_namespace(ns_pkg):
     return pkgutil.iter_modules(ns_pkg.__path__, ns_pkg.__name__ + ".")
 
-def discover_mutators():
-    mutators = {}
-
-    for finder, name, ispkg in iter_namespace(foozzer.mutators):
-        mutators.update(importlib.import_module(name).get_module_info())
-
-    return mutators
-
 class ActionListMutators(argparse.Action):
 	def __init__(self, option_strings, dest, const, **kwargs):
 		self._descriptions = const
@@ -201,25 +194,78 @@ class ActionListMutators(argparse.Action):
 		print('')
 		sys.exit(0)
 
+class ActionListPlugins(argparse.Action):
+    def __init__(self, option_strings, dest, const, **kwargs):
+        self._descriptions = const
+        super(ActionListPlugins, self).__init__(option_strings, dest, **kwargs)
+    def __call__(self, parser, namespace, values, option_string=None):
+        for plugin_type in self._descriptions:
+            print('\n{}:\n'.format(plugin_type))
+            for k, v in self._descriptions[plugin_type].items():
+                print('  {} : {}'.format(k, v))
+            print('')
+        sys.exit(0)
+
+def discover_plugins(ns):
+    plugins = {}
+
+    for finder, name, ispkg in iter_namespace(ns):
+        try:
+            plugins.update(importlib.import_module(name).get_module_info())
+        except(AttributeError):
+            # If the module does not provide a get_module_info function
+            # it is probably an abstract base class or utility library.
+            # Anyways, since in that case we have no way to determine its
+            # correct entry point, we just ignore it.
+            pass
+
+    return plugins
+
 def main():
 
-    mutators = discover_mutators()
+    mutators = discover_plugins(foozzer.mutators)
+    runners = discover_plugins(foozzer.runners)
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--verbose', '-v', action='count', default=0)
     parser.add_argument(
 		'-L',
 		nargs=0,
-		action=ActionListMutators,
-		help='describe available mutators',
-		const={n: mutators[n][0] for n in mutators.keys()}
+		action=ActionListPlugins,
+		help='describe available plugins',
+		const={
+            'Mutators': {n: mutators[n][0] for n in mutators.keys()},
+            'Runners': {n: runners[n][0] for n in runners.keys()},
+        }
 	)
+    parser.add_argument(
+        '-i',
+        required=True,
+        help='input directory'
+    )
+    parser.add_argument(
+        '-o',
+        required=True,
+        help='output directory'
+    )
+    parser.add_argument(
+        '-D',
+        required=True,
+        help='Dr.Memory bin directory'
+    )
     parser.add_argument(
         '-m',
         required=True,
         choices = [m for m in mutators.keys()],
         help='mutator to use'
     )
+    parser.add_argument(
+        '-r',
+        required=True,
+        choices = [m for m in runners.keys()],
+        help='runner to use'
+    )
+    parser.add_argument('runner_args', nargs=argparse.REMAINDER)
     args = parser.parse_args()
     if args.verbose == 1:
         logger.setLevel(logging.WARNING)
@@ -228,7 +274,7 @@ def main():
     elif args.verbose > 2:
         logger.setLevel(logging.DEBUG)
 
-    playlist_mutator = mutators[args.m][1]
+    input_mutator = mutators[args.m][1]
 
     stop_processes()
 
@@ -239,7 +285,7 @@ def main():
     logger.info('Opening logfile')
     log_outfile = open(LOG_OUTFILE, 'a')
     logger.debug('FPLInFILE()')
-    fpl = playlist_mutator(PL_FUZZ, PL_TEMPLATE)
+    mutator = input_mutator(args.i, args.o)
 
     i = 0
     logger.debug('Clearing queue initially')
@@ -264,46 +310,42 @@ def main():
 
     logger.info('MAINLOOP START')
     while os.path.isfile(RUNFILE):
-        try:
-            logger.debug('clearing queue')
-            clear_queue(q, log_outfile)
+        for input_file, state_msg in mutator:
+            try:
+                logger.debug('clearing queue')
+                clear_queue(q, log_outfile)
 
-            logger.debug('checking if Dr.Memory is still running')
-            if p.poll() != None:
-                logger.info('RESTARTING Dr.Memory')
+                logger.debug('checking if Dr.Memory is still running')
+                if p.poll() != None:
+                    logger.info('RESTARTING Dr.Memory')
+                    stopall(t)
+                    p, t = startall(q)
+                    gui_wait_start(log_outfile)
+
+                if os.path.isfile(PAUSEFILE):
+                    logger.info('pausing...')
+                while os.path.isfile(PAUSEFILE):
+                    sleep(1)
+
+                logger.debug('Iteration: {}}\n'.format(state_msg))
+                log_outfile.flush()
+                log_outfile.write('FOOZZER: Iteration: {}\n'.format(state_msg))
+                log_outfile.flush()
+                logger.debug('loading playlist')
+                load_pl(input_file)
+                logger.debug('closing info window')
+                close_info()
+                logger.debug('closing playlist')
+                del_pl(MENU_FUZZ_PL)
+            except FoozzerUIError as e:
+                log_outfile.write('Resetting after UIError: {}'.format(e))
+                logger.warning('Resetting after UIError: {}'.format(e))
+                clear_queue(q, log_outfile)
+                if p.poll() == None:
+                    p.terminate()
                 stopall(t)
                 p, t = startall(q)
                 gui_wait_start(log_outfile)
-
-            if os.path.isfile(PAUSEFILE):
-                logger.info('pausing...')
-            while os.path.isfile(PAUSEFILE):
-                sleep(1)
-
-            logger.debug('fpl.next()')
-            fpl_iteration = fpl.next()
-            if fpl_iteration == (-1, -1):
-                logger.info('mutations exhausted; exiting')
-                break
-            logger.debug('Iteration: t_offset={} mod_offset={}\n'.format(fpl_iteration[0], fpl_iteration[1]))
-            log_outfile.flush()
-            log_outfile.write('FOOZZER: Iteration: t_offset={} mod_offset={}\n'.format(fpl_iteration[0], fpl_iteration[1]))
-            log_outfile.flush()
-            logger.debug('loading playlist')
-            load_pl(PL_FUZZ_NAME)
-            logger.debug('closing info window')
-            close_info()
-            logger.debug('closing playlist')
-            del_pl(MENU_FUZZ_PL)
-        except FoozzerUIError as e:
-            log_outfile.write('Resetting after UIError: {}'.format(e))
-            logger.warning('Resetting after UIError: {}'.format(e))
-            clear_queue(q, log_outfile)
-            if p.poll() == None:
-                p.terminate()
-            stopall(t)
-            p, t = startall(q)
-            gui_wait_start(log_outfile)
 
         i += 1
 
