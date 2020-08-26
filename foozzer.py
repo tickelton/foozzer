@@ -19,6 +19,7 @@ from subprocess import PIPE, STDOUT, Popen
 from threading  import Thread
 from queue import Queue, Empty
 
+ON_POSIX = os.name == 'posix'
 
 
 # binaries
@@ -26,7 +27,10 @@ VALGRIND = '/usr/bin/valgrind'
 XTERM = '/usr/bin/xterm'
 LS = '/usr/bin/ls'
 FOOBAR = r'C:\Program Files (x86)\foobar2000\foobar2000.exe'
-DRMEMORY = r'C:\Program Files (x86)\Dr. Memory\bin\drmemory.exe'
+if ON_POSIX:
+    DRMEMORY_BIN = 'drmemory'
+else:
+    DRMEMORY_BIN = r'drmemory.exe'
 DRMEMORY_PARAMS = r'-batch'
 
 # playlists
@@ -54,9 +58,9 @@ CMD_LOAD_PL = '/command:"Load playlist..."'
 RUNFILE = r'D:\Temp\foozzer.run'
 PAUSEFILE = r'D:\Temp\foozzer.pause'
 STATE_FILE = r'D:\Workspace\foobar_fuzzing\out\state.txt'
-LOG_OUTFILE = r'D:\Workspace\foobar_fuzzing\out\log.txt'
+LOG_OUTFILE = 'log.txt'
 PL_FUZZ_NAME = 'fuzz_pl.fpl'
-ON_POSIX = 'posix' in sys.builtin_module_names
+#ON_POSIX = 'posix' in sys.builtin_module_names
 GUI_CHECK_INTERVAL = 0.1 # time to wait in between checks for UI element
 GUI_CHECK_TIMEOUT = 30 # max number of GUI_CHECK_INTERVAL iterations
 
@@ -148,8 +152,15 @@ class FoozzerUIError(Exception):
     def __init__(self, message):
         self.message = message
 
-def startall(q):
-    p = Popen([DRMEMORY, DRMEMORY_PARAMS, FOOBAR], stdout=PIPE, stderr=STDOUT, bufsize=1, universal_newlines=True, close_fds=ON_POSIX)
+def startall(q, drmemory_bin, target_cmdline):
+    p = Popen(
+        [drmemory_bin, DRMEMORY_PARAMS, '--'] + target_cmdline,
+        stdout=PIPE,
+        stderr=STDOUT,
+        bufsize=1,
+        universal_newlines=True,
+        close_fds=ON_POSIX
+    )
     t = Thread(target=enqueue_output, args=(p.stdout, q))
     #t.daemon = True # thread dies with the program
     t.start()
@@ -161,10 +172,13 @@ def startall(q):
 
     return p, t
 
-def stop_processes():
-    os.system("taskkill /t /im foobar2000.exe")
-    sleep(2)
-    os.system("taskkill /t /im drmemory.exe")
+def stop_processes(target):
+    if ON_POSIX:
+        os.system('pkill {}'.format(target))
+    else:
+        os.system('taskkill /t /im {}'.format(target))
+        sleep(2)
+        os.system('taskkill /t /im drmemory.exe')
 
 def stopall(t):
     stop_processes()
@@ -274,22 +288,31 @@ def main():
     elif args.verbose > 2:
         logger.setLevel(logging.DEBUG)
 
+    runner_class = runners[args.r][1]
+    runner = runner_class(args.runner_args[1:])
+    target_process = runner.get_process_name()
     input_mutator = mutators[args.m][1]
 
-    stop_processes()
+    #stop_processes(target_process)
 
     q = Queue()
 
-    p, t = startall(q)
+    p, t = startall(q, os.path.join(args.D, DRMEMORY_BIN), runner.get_cmdline())
 
     logger.info('Opening logfile')
-    log_outfile = open(LOG_OUTFILE, 'a')
+    log_outfile = open(os.path.join(args.o, LOG_OUTFILE), 'a')
     logger.debug('FPLInFILE()')
     mutator = input_mutator(args.i, args.o)
 
     i = 0
     logger.debug('Clearing queue initially')
     clear_queue(q, log_outfile)
+
+    sleep(30)
+    print('STOPPING!!!!!')
+    stop_processes(target_process)
+    log_outfile.close()
+    sys.exit(2)
 
     logger.info('Waiting for start')
     gui_wait_start(log_outfile)
