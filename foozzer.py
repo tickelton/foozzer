@@ -1,11 +1,8 @@
 #!/usr/bin/env python3
 
 import os
-import re
 import sys
 import argparse
-import subprocess
-#import pyautogui
 import importlib
 import pkgutil
 import logging
@@ -14,7 +11,6 @@ import foozzer.mutators
 import foozzer.runners
 
 from time import sleep
-from shutil import copyfile
 from subprocess import PIPE, STDOUT, Popen
 from threading  import Thread
 from queue import Queue, Empty
@@ -23,46 +19,16 @@ ON_POSIX = os.name == 'posix'
 
 
 # binaries
-VALGRIND = '/usr/bin/valgrind'
-XTERM = '/usr/bin/xterm'
-LS = '/usr/bin/ls'
-FOOBAR = r'C:\Program Files (x86)\foobar2000\foobar2000.exe'
 if ON_POSIX:
     DRMEMORY_BIN = 'drmemory'
 else:
-    DRMEMORY_BIN = r'drmemory.exe'
-DRMEMORY_PARAMS = r'-batch'
-
-# playlists
-PL_GARBAGE = r'D:\Workspace\foobar_fuzzing\in\garbage.fpl'
-PL_GENERIC = r'D:\Workspace\foobar_fuzzing\in\generic.fpl'
-PL_FUZZ = r'D:\Workspace\foobar_fuzzing\in\fuzz_pl.fpl'
-#PL_TEMPLATE = r'D:\Workspace\foobar_fuzzing\in\fuzzing_base.fpl'
-PL_TEMPLATE = r'D:\Workspace\foobar_fuzzing\in\fuzzing_minimal.fpl'
-
-# buttons
-NEW_PLAYLIST = r'D:\Workspace\foozzer\images\new_playlist.png'
-RM_PL = r'D:\Workspace\foozzer\images\remove_playlist.png'
-START_NORMALLY = r'D:\Workspace\foozzer\images\start_normally.png'
-TITLE_INFORMATION = r'D:\Workspace\foozzer\images\information3.png'
-LOAD_PL = r'D:\Workspace\foozzer\images\load_playlist.png'
-WINDOW_LOAD_PL = r'D:\Workspace\foozzer\images\window_load_playlist.png'
-MENU_FILE = r'D:\Workspace\foozzer\images\file.png'
-MENU_FUZZ_PL = r'D:\Workspace\foozzer\images\fuzz_pl.png'
-
-# commands
-CMD_STOP = '/stop'
-CMD_LOAD_PL = '/command:"Load playlist..."'
+    DRMEMORY_BIN = 'drmemory.exe'
+DRMEMORY_PARAMS = '-batch'
 
 # misc constants
-RUNFILE = r'D:\Temp\foozzer.run'
-PAUSEFILE = r'D:\Temp\foozzer.pause'
-STATE_FILE = r'D:\Workspace\foobar_fuzzing\out\state.txt'
+RUNFILE = 'foozzer.run'
+PAUSEFILE = 'foozzer.pause'
 LOG_OUTFILE = 'log.txt'
-PL_FUZZ_NAME = 'fuzz_pl.fpl'
-#ON_POSIX = 'posix' in sys.builtin_module_names
-GUI_CHECK_INTERVAL = 0.1 # time to wait in between checks for UI element
-GUI_CHECK_TIMEOUT = 30 # max number of GUI_CHECK_INTERVAL iterations
 
 # logging configuration
 logger = logging.getLogger()
@@ -74,70 +40,6 @@ logger.addHandler(handler)
 logger.setLevel(logging.ERROR)
 
 
-def run_cmd(cmd_str):
-    subprocess.run([FOOBAR, cmd_str])
-
-def del_pl(btn_pl_img):
-    btn_pl = gui_wait_for(btn_pl_img)
-    btn_pl_center = pyautogui.center(btn_pl)
-    pyautogui.click(button='right', x=btn_pl_center.x, y=btn_pl_center.y)
-    del_pl = gui_wait_for(RM_PL)
-    del_pl_center = pyautogui.center(del_pl)
-    pyautogui.click(x=del_pl_center.x, y=del_pl_center.y)
-
-def load_pl(pl_name):
-    btn_file = gui_wait_for(MENU_FILE)
-    btn_file_center = pyautogui.center(btn_file)
-    pyautogui.click(x=btn_file_center.x, y=btn_file_center.y)
-    btn_load = gui_wait_for(LOAD_PL)
-    btn_load_center = pyautogui.center(btn_load)
-    pyautogui.click(x=btn_load_center.x, y=btn_load_center.y)
-    gui_wait_for(WINDOW_LOAD_PL)
-    pyautogui.write(pl_name)
-    pyautogui.press('enter')
-
-def close_info():
-    for i in range(3):
-        win_info = pyautogui.locateOnScreen(TITLE_INFORMATION)
-        if win_info:
-            pyautogui.click(x=win_info.left+win_info.width-5, y=win_info.top+5)
-            return
-
-def reset_playlists():
-    while pyautogui.locateOnScreen(MENU_FUZZ_PL):
-        del_pl(MENU_FUZZ_PL)
-        sleep(1)
-
-def gui_wait_start(log_fd):
-    i = 0
-
-    while not pyautogui.locateOnScreen(MENU_FILE) and not pyautogui.locateOnScreen(START_NORMALLY):
-        if i > GUI_CHECK_TIMEOUT:
-            raise FoozzerUIError('start failed')
-        i += 1
-        # initial start takes a while, so we just use triple the regular timeout
-        sleep(GUI_CHECK_INTERVAL * 3)
-
-    pos = pyautogui.locateOnScreen(START_NORMALLY)
-    if pos:
-        log_fd.write('ABNORMAL TERMINATION ! POTENTIAL BUG !!')
-        pos_center = pyautogui.center(pos)
-        pyautogui.click(x=pos_center.x, y=pos_center.y)
-        gui_wait_for(MENU_FILE)
-
-
-def gui_wait_for(element):
-    i = 0
-
-    while i < GUI_CHECK_TIMEOUT:
-        pos = pyautogui.locateOnScreen(element)
-        if pos:
-            return pos
-        i += 1
-        sleep(GUI_CHECK_INTERVAL)
-
-    raise FoozzerUIError('failed to locate {}'.format(element))
-
 def enqueue_output(out, queue):
     for line in iter(out.readline, ''):
         queue.put(line)
@@ -146,11 +48,6 @@ def enqueue_output(out, queue):
 def create_next_input(filename, template):
     outfile = open(filename, 'wb')
     infile = open(template, 'rb', buffering=0)
-
-class FoozzerUIError(Exception):
-
-    def __init__(self, message):
-        self.message = message
 
 def startall(q, drmemory_bin, target_cmdline):
     p = Popen(
@@ -162,7 +59,7 @@ def startall(q, drmemory_bin, target_cmdline):
         close_fds=ON_POSIX
     )
     t = Thread(target=enqueue_output, args=(p.stdout, q))
-    #t.daemon = True # thread dies with the program
+    #t.daemon = True
     t.start()
     sleep(1)
     if p.poll() != None:
@@ -180,14 +77,14 @@ def stop_processes(target):
         sleep(2)
         os.system('taskkill /t /im drmemory.exe')
 
-def stopall(t):
-    stop_processes()
+def stopall(t, target):
+    stop_processes(target)
     sleep(5)
     t.join()
 
 def clear_queue(q, outfile):
     while True:
-        # read line without blocking
+        # non-blocking readline
         try:  line = q.get_nowait() # or q.get(timeout=.1)
         except Empty:
             break
@@ -293,7 +190,7 @@ def main():
     target_process = runner.get_process_name()
     input_mutator = mutators[args.m][1]
 
-    #stop_processes(target_process)
+    stop_processes(target_process)
 
     q = Queue()
 
@@ -302,73 +199,56 @@ def main():
     logger.info('Opening logfile')
     log_outfile = open(os.path.join(args.o, LOG_OUTFILE), 'a')
     logger.debug('FPLInFILE()')
+    runfile_path = os.path.join(args.o, RUNFILE)
+    pausefile_path = os.path.join(args.o, PAUSEFILE)
     mutator = input_mutator(args.i, args.o)
 
     i = 0
     logger.debug('Clearing queue initially')
     clear_queue(q, log_outfile)
 
-    sleep(30)
-    print('STOPPING!!!!!')
     stop_processes(target_process)
-    log_outfile.close()
-    sys.exit(2)
 
-    logger.info('Waiting for start')
-    gui_wait_start(log_outfile)
-    logger.debug('Resetting playlists')
-    reset_playlists()
-    logger.info('Dry run')
+    runner.setup()
     log_outfile.flush()
-    log_outfile.write('FOOZZER: DRY RUN\n')
-    log_outfile.flush()
-    logger.debug('copying generic playlist')
-    copyfile(PL_GENERIC, PL_FUZZ)
-    logger.debug('loading playlist')
-    load_pl(PL_FUZZ_NAME)
-    logger.debug('checking for info window')
-    close_info()
-    logger.debug('closing playlist')
-    del_pl(MENU_FUZZ_PL)
 
     logger.info('MAINLOOP START')
-    while os.path.isfile(RUNFILE):
-        for input_file, state_msg in mutator:
-            try:
-                logger.debug('clearing queue')
-                clear_queue(q, log_outfile)
+    for input_file, state_msg in mutator:
+        if not os.path.isfile(runfile_path):
+            logger.info('Stopping due to missing run file: {}'.format(runfile_path))
+            break
 
-                logger.debug('checking if Dr.Memory is still running')
-                if p.poll() != None:
-                    logger.info('RESTARTING Dr.Memory')
-                    stopall(t)
-                    p, t = startall(q)
-                    gui_wait_start(log_outfile)
+        logger.debug('clearing queue')
+        clear_queue(q, log_outfile)
 
-                if os.path.isfile(PAUSEFILE):
-                    logger.info('pausing...')
-                while os.path.isfile(PAUSEFILE):
-                    sleep(1)
+        logger.debug('checking if Dr.Memory is still running')
+        if p.poll() != None:
+            logger.info('RESTARTING Dr.Memory')
+            stopall(t, target_process)
+            p, t = startall(q, os.path.join(args.D, DRMEMORY_BIN), runner.get_cmdline())
+            runner.setup()
 
-                logger.debug('Iteration: {}}\n'.format(state_msg))
-                log_outfile.flush()
-                log_outfile.write('FOOZZER: Iteration: {}\n'.format(state_msg))
-                log_outfile.flush()
-                logger.debug('loading playlist')
-                load_pl(input_file)
-                logger.debug('closing info window')
-                close_info()
-                logger.debug('closing playlist')
-                del_pl(MENU_FUZZ_PL)
-            except FoozzerUIError as e:
-                log_outfile.write('Resetting after UIError: {}'.format(e))
-                logger.warning('Resetting after UIError: {}'.format(e))
-                clear_queue(q, log_outfile)
-                if p.poll() == None:
-                    p.terminate()
-                stopall(t)
-                p, t = startall(q)
-                gui_wait_start(log_outfile)
+        if os.path.isfile(pausefile_path):
+            logger.info('pausing...')
+        while os.path.isfile(pausefile_path):
+            sleep(1)
+
+        logger.debug('Iteration: {}\n'.format(state_msg))
+        log_outfile.flush()
+        log_outfile.write('FOOZZER: Iteration: {}\n'.format(state_msg))
+        log_outfile.flush()
+        # TODO: make it clear that an unsuccessful run requires a
+        #       reset of the fuzzing process, e.g. by returning
+        #       some meaningful value like 'RUNNER_{FAILURE|RESTART}'...
+        if not runner.run(input_file):
+            log_outfile.write('Resetting after Runner error')
+            logger.warning('Resetting after Runner error')
+            clear_queue(q, log_outfile)
+            if p.poll() == None:
+                p.terminate()
+            stopall(t, target_process)
+            p, t = startall(q, os.path.join(args.D, DRMEMORY_BIN), runner.get_cmdline())
+            runner.setup()
 
         i += 1
 
@@ -376,7 +256,7 @@ def main():
     if p.poll() == None:
         logger.debug('terminating')
         p.terminate()
-        stopall(t)
+        stopall(t, target_process)
 
     clear_queue(q, log_outfile)
     log_outfile.flush()
