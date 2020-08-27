@@ -18,3 +18,5 @@ pylint:
 test:
 	pipenv run python -m unittest discover -v
 
+run:
+	pipenv run python foozzer.py -v -v -v  -i D:\Workspace\tmp\in -o D:\Workspace\tmp\out -D "C:\Program Files (x86)\Dr. Memory\bin" -m fpl_basic -r foobar2k -- -F "C:\Program Files (x86)\foobar2000" -R D:\Workspace\foozzer\images
