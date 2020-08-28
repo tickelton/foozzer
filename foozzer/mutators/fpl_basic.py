@@ -6,6 +6,9 @@ The mutator appends 1k of garbage data to the input file and modifies
 an single byte of the original data per iteration.
 """
 
+# Copyright (c) 2020 tick <tickelton@gmail.com>
+# SPDX-License-Identifier:	ISC
+
 import os
 import configparser
 import logging

@@ -11,6 +11,9 @@ working in general and to rule out any problems
 caused by faulty mutators.
 """
 
+# Copyright (c) 2020 tick <tickelton@gmail.com>
+# SPDX-License-Identifier:	ISC
+
 import os
 import logging
 

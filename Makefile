@@ -1,4 +1,4 @@
-.PHONY: test help pylint 
+.PHONY: test help pylint run
 
 all: help
 
@@ -8,6 +8,7 @@ help:
 	@echo "pylint           :    run pylint"
 	@echo "test             :    run all unit tests"
 	@echo "requirements.txt :    create requirements.txt"
+	@echo "run              :    example of all required arguments"
 
 requirements.txt: 
 	pipenv run pip freeze > requirements.txt

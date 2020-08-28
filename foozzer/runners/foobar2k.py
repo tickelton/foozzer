@@ -14,6 +14,9 @@ Options:
 
 """
 
+# Copyright (c) 2020 tick <tickelton@gmail.com>
+# SPDX-License-Identifier:	ISC
+
 import os
 import argparse
 import logging
