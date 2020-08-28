@@ -1,4 +1,33 @@
 #!/usr/bin/env python3
+"""
+A cross platform fuzzing framework primarily targeting GUI applications.
+
+usage: foozzer.py [-h] [--verbose] [-L] -i I -o O -D D -m MUTATOR -r RUNNER -- RUNNER_ARGS
+  runner_args
+
+Options:
+
+    -h
+    --help          show help message and exit
+
+    -v
+    --verbose       increase output verbosity (can be given multiple times)
+
+    -L              describe available plugins
+
+    -i I            input directory
+
+    -o O            output directory
+
+    -D D            Dr.Memory bin directory
+
+    -m M            mutator to use
+
+    -r R            runner to use
+
+    RUNNER_ARGS     arguments passed to selected runner module
+
+"""
 
 import os
 import sys
@@ -7,13 +36,14 @@ import importlib
 import pkgutil
 import logging
 
-import foozzer.mutators
-import foozzer.runners
-
 from time import sleep
 from subprocess import PIPE, STDOUT, Popen
 from threading  import Thread
 from queue import Queue, Empty
+
+import foozzer.mutators
+import foozzer.runners
+
 
 ON_POSIX = os.name == 'posix'
 
@@ -41,16 +71,29 @@ logger.setLevel(logging.ERROR)
 
 
 def enqueue_output(out, queue):
+    """Helper function for non-blocking reading of child STDOUT."""
+
     for line in iter(out.readline, ''):
         queue.put(line)
     out.close()
 
-def create_next_input(filename, template):
-    outfile = open(filename, 'wb')
-    infile = open(template, 'rb', buffering=0)
+def clear_queue(queue, outfile):
+    """Helper function for non-blocking reading of child STDOUT."""
 
-def startall(q, drmemory_bin, target_cmdline):
-    p = Popen(
+    while True:
+        # non-blocking readline
+        try:
+            line = queue.get_nowait()
+        except Empty:
+            break
+        else:
+            outfile.write(line)
+
+
+def startall(queue, drmemory_bin, target_cmdline):
+    """Starts fuzzee child process and thread for STDOUT queue."""
+
+    drmem = Popen(
         [drmemory_bin, DRMEMORY_PARAMS, '--'] + target_cmdline,
         stdout=PIPE,
         stderr=STDOUT,
@@ -58,18 +101,20 @@ def startall(q, drmemory_bin, target_cmdline):
         universal_newlines=True,
         close_fds=ON_POSIX
     )
-    t = Thread(target=enqueue_output, args=(p.stdout, q))
-    #t.daemon = True
-    t.start()
+    qthread = Thread(target=enqueue_output, args=(drmem.stdout, queue))
+    #qthread.daemon = True
+    qthread.start()
     sleep(1)
-    if p.poll() != None:
+    if drmem.poll() is not None:
         logger.error('SOMETHING WENT WRONG!!')
-        t.join()
+        qthread.join()
         sys.exit(1)
 
-    return p, t
+    return drmem, qthread
 
 def stop_processes(target):
+    """Stops fuzzee and Dr.Memrory processes, if running."""
+
     if ON_POSIX:
         os.system('pkill {}'.format(target))
     else:
@@ -77,53 +122,45 @@ def stop_processes(target):
         sleep(2)
         os.system('taskkill /t /im drmemory.exe')
 
-def stopall(t, target):
+def stopall(qthread, target):
+    """Stops child processes and queue thread."""
+
     stop_processes(target)
     sleep(5)
-    t.join()
-
-def clear_queue(q, outfile):
-    while True:
-        # non-blocking readline
-        try:  line = q.get_nowait() # or q.get(timeout=.1)
-        except Empty:
-            break
-        else: # got line
-            outfile.write(line)
-
-def iter_namespace(ns_pkg):
-    return pkgutil.iter_modules(ns_pkg.__path__, ns_pkg.__name__ + ".")
-
-class ActionListMutators(argparse.Action):
-	def __init__(self, option_strings, dest, const, **kwargs):
-		self._descriptions = const
-		super(ActionListMutators, self).__init__(option_strings, dest, **kwargs)
-	def __call__(self, parser, namespace, values, option_string=None):
-		print('\navailable mutators:\n')
-		for k in self._descriptions.keys():
-			print('  {} : {}'.format(k, self._descriptions[k]))
-		print('')
-		sys.exit(0)
+    qthread.join()
 
 class ActionListPlugins(argparse.Action):
+    """Argparser helper class to show plugins descriptions."""
+
     def __init__(self, option_strings, dest, const, **kwargs):
         self._descriptions = const
-        super(ActionListPlugins, self).__init__(option_strings, dest, **kwargs)
+        super().__init__(option_strings, dest, **kwargs)
     def __call__(self, parser, namespace, values, option_string=None):
         for plugin_type in self._descriptions:
             print('\n{}:\n'.format(plugin_type))
-            for k, v in self._descriptions[plugin_type].items():
-                print('  {} : {}'.format(k, v))
+            for k, val in self._descriptions[plugin_type].items():
+                print('  {} : {}'.format(k, val))
             print('')
         sys.exit(0)
 
-def discover_plugins(ns):
+def iter_namespace(ns_pkg):
+    """Helper function for plugin discovery."""
+
+    return pkgutil.iter_modules(ns_pkg.__path__, ns_pkg.__name__ + ".")
+
+def discover_plugins(namespc):
+    """
+    Discovers mutator and runner plugins.
+
+    Retrieves entry points of the modules and descriptions for help texts.
+    """
+
     plugins = {}
 
-    for finder, name, ispkg in iter_namespace(ns):
+    for finder, name, ispkg in iter_namespace(namespc):
         try:
             plugins.update(importlib.import_module(name).get_module_info())
-        except(AttributeError):
+        except AttributeError:
             # If the module does not provide a get_module_info function
             # it is probably an abstract base class or utility library.
             # Anyways, since in that case we have no way to determine its
@@ -132,10 +169,8 @@ def discover_plugins(ns):
 
     return plugins
 
-def main():
-
-    mutators = discover_plugins(foozzer.mutators)
-    runners = discover_plugins(foozzer.runners)
+def do_parse_args(args, mutators, runners):
+    """Argument parsing helper function."""
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--verbose', '-v', action='count', default=0)
@@ -145,8 +180,8 @@ def main():
 		action=ActionListPlugins,
 		help='describe available plugins',
 		const={
-            'Mutators': {n: mutators[n][0] for n in mutators.keys()},
-            'Runners': {n: runners[n][0] for n in runners.keys()},
+            'Mutators': {n: mutators[n][0] for n in mutators},
+            'Runners': {n: runners[n][0] for n in runners},
         }
 	)
     parser.add_argument(
@@ -167,17 +202,25 @@ def main():
     parser.add_argument(
         '-m',
         required=True,
-        choices = [m for m in mutators.keys()],
+        choices = [m for m in mutators],
         help='mutator to use'
     )
     parser.add_argument(
         '-r',
         required=True,
-        choices = [m for m in runners.keys()],
+        choices = [m for m in runners],
         help='runner to use'
     )
     parser.add_argument('runner_args', nargs=argparse.REMAINDER)
-    args = parser.parse_args()
+    return parser.parse_args(args)
+
+def main(args=None):
+    """foozzer.py main function"""
+
+    mutators = discover_plugins(foozzer.mutators)
+    runners = discover_plugins(foozzer.runners)
+
+    args = do_parse_args(args, mutators, runners)
     if args.verbose == 1:
         logger.setLevel(logging.WARNING)
     elif args.verbose == 2:
@@ -192,9 +235,9 @@ def main():
 
     stop_processes(target_process)
 
-    q = Queue()
+    queue = Queue()
 
-    p, t = startall(q, os.path.join(args.D, DRMEMORY_BIN), runner.get_cmdline())
+    drmem, qthread = startall(queue, os.path.join(args.D, DRMEMORY_BIN), runner.get_cmdline())
 
     logger.info('Opening logfile')
     log_outfile = open(os.path.join(args.o, LOG_OUTFILE), 'a')
@@ -205,7 +248,7 @@ def main():
 
     i = 0
     logger.debug('Clearing queue initially')
-    clear_queue(q, log_outfile)
+    clear_queue(queue, log_outfile)
 
     stop_processes(target_process)
 
@@ -215,17 +258,21 @@ def main():
     logger.info('MAINLOOP START')
     for input_file, state_msg in mutator:
         if not os.path.isfile(runfile_path):
-            logger.info('Stopping due to missing run file: {}'.format(runfile_path))
+            logger.info('Stopping due to missing run file: %s', runfile_path)
             break
 
         logger.debug('clearing queue')
-        clear_queue(q, log_outfile)
+        clear_queue(queue, log_outfile)
 
         logger.debug('checking if Dr.Memory is still running')
-        if p.poll() != None:
+        if drmem.poll() is not None:
             logger.info('RESTARTING Dr.Memory')
-            stopall(t, target_process)
-            p, t = startall(q, os.path.join(args.D, DRMEMORY_BIN), runner.get_cmdline())
+            stopall(qthread, target_process)
+            drmem, qthread = startall(
+                queue,
+                os.path.join(args.D, DRMEMORY_BIN),
+                runner.get_cmdline()
+            )
             runner.setup()
 
         if os.path.isfile(pausefile_path):
@@ -233,7 +280,7 @@ def main():
         while os.path.isfile(pausefile_path):
             sleep(1)
 
-        logger.debug('Iteration: {}\n'.format(state_msg))
+        logger.debug('Iteration: %s\n', state_msg)
         log_outfile.flush()
         log_outfile.write('FOOZZER: Iteration: {}\n'.format(state_msg))
         log_outfile.flush()
@@ -243,22 +290,26 @@ def main():
         if not runner.run(input_file):
             log_outfile.write('Resetting after Runner error')
             logger.warning('Resetting after Runner error')
-            clear_queue(q, log_outfile)
-            if p.poll() == None:
-                p.terminate()
-            stopall(t, target_process)
-            p, t = startall(q, os.path.join(args.D, DRMEMORY_BIN), runner.get_cmdline())
+            clear_queue(queue, log_outfile)
+            if drmem.poll() is None:
+                drmem.terminate()
+            stopall(qthread, target_process)
+            drmem, qthread = startall(
+                queue,
+                os.path.join(args.D, DRMEMORY_BIN),
+                runner.get_cmdline()
+            )
             runner.setup()
 
         i += 1
 
     logger.info('MAINLOOP END')
-    if p.poll() == None:
+    if drmem.poll() is None:
         logger.debug('terminating')
-        p.terminate()
-        stopall(t, target_process)
+        drmem.terminate()
+        stopall(qthread, target_process)
 
-    clear_queue(q, log_outfile)
+    clear_queue(queue, log_outfile)
     log_outfile.flush()
     log_outfile.write('FOOZZER: FINISHED')
     log_outfile.close()
