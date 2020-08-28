@@ -31,6 +31,16 @@ The basic concept behind Foozzer is as follows:
   target the fuzzing process is reset to a known good
   state and continued with the next iteration of the
   mutator.
+* Since interating with the main process might be
+  inhibited by certain types of runners, e.g. ones
+  the cause high frequency mouse and keyboard
+  operations, the process can be controlled via
+  trigger files.
+  The fuzzing process will only run if a file named
+  'foozer.run' is present in the output directory
+  specified on the command line and will pause without
+  terminating the target process if a file named
+  'foozer.pause' is present in the same directory.
 
 
 Available plugins
@@ -108,7 +118,8 @@ $ python foozzer.py -L
 
 A typical command line might look like this:
 
-$ python foozzer.py -i D:\Workspace\tmp\in -o D:\Workspace\tmp\out -D "C:\Program Files (x86)\Dr. Memory\bin" -m fpl_basic -r foobar2k -- -F "C:\Program Files (x86)\foobar2000" -R D:\Workspace\foozzer\images
+> type nul > D:\Workspace\tmp\out\foozzer.run
+> python foozzer.py -i D:\Workspace\tmp\in -o D:\Workspace\tmp\out -D "C:\Program Files (x86)\Dr. Memory\bin" -m fpl_basic -r foobar2k -- -F "C:\Program Files (x86)\foobar2000" -R D:\Workspace\foozzer\images
 
 
 License
