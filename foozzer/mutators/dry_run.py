@@ -1,8 +1,17 @@
 #!/usr/bin/env python3
+"""
+Dry run mutator.
+
+Copies the input file to the output directory
+and initiates exactly one run with the
+unmodified file.
+
+Can be used to check if the fuzzing setup is
+working in general and to rule out any problems
+caused by faulty mutators.
+"""
 
 import os
-import re
-import configparser
 import logging
 
 MUTATOR_NAME = 'dry_run'
@@ -11,9 +20,23 @@ OUTFILE_NAME = 'fuzz_pl.fpl'
 log = logging.getLogger(__name__)
 
 def get_module_info():
-    return {MUTATOR_NAME: ('Single run with the first file in the input directory and not mutations applied', DryRunMutator)}
+    """Returns data used by main function to discover plugins."""
+
+    return {
+        MUTATOR_NAME: (
+            'Single run with the first file in the input directory and not mutations applied',
+            DryRunMutator
+        )
+    }
 
 class DryRunMutator:
+    """
+    The mutator class works as an iterator that produces a mutation
+    of the input file on every iteration.
+
+    In this particular case only a single iteration with an
+    unmodified input file is performed.
+    """
 
     def __init__(self, indir, outdir):
         self._infile_name = ''
@@ -44,4 +67,3 @@ class DryRunMutator:
                 outfile.write(infile.read())
 
         return OUTFILE_NAME, "Dry Run"
-
