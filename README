@@ -47,8 +47,8 @@ Available plugins
 -----------------
 
 Foozzer comes with a runner plugin for fuzzing the
-playlist loader of foobar2000 and two example mutators,
-'dry_run' and 'fpl_basic'.
+playlist loader of foobar2000 as well as a mock runner
+for testing and two example mutators, 'dry_run' and 'fpl_basic'.
 
 'dry_run' only executes a single run with the
 unmodified input file. This mutator should be used to
@@ -96,10 +96,6 @@ Required parameters for Foozer are:
 * The path to the Dr. Memory binary.
 * The name of the runner to use.
 * The name of the mutator to use.
-* In case of the foobar2k runner:
-  * The path to foobar2000.exe
-  * The path of the resource directory containing sample images
-    of the GUI elements that are to be used.
 
 The available plugins can be listed with the option '-L':
 
@@ -114,12 +110,37 @@ $ python foozzer.py -L
     Runners:
     
       foobar2k : foobar2000 playlist fuzzer
+      mock : mock runner
 
 
-A typical command line might look like this:
+Using the foobar2k runner
+-------------------------
+
+The foobar2k runner needs the following additional parameters:
+  * The path to foobar2000.exe
+  * The path of the resource directory containing sample images
+    of the GUI elements that are to be used.
+
+A typical command line for the foobar2k runner might look like this:
 
 > type nul > D:\Workspace\tmp\out\foozzer.run
 > python foozzer.py -i D:\Workspace\tmp\in -o D:\Workspace\tmp\out -D "C:\Program Files (x86)\Dr. Memory\bin" -m fpl_basic -r foobar2k -- -F "C:\Program Files (x86)\foobar2000" -R D:\Workspace\foozzer\images
+
+
+Using the mock runner
+---------------------
+
+For testing mutators or core program logic a mock runner is provided.
+This runner does start a target process with a set of supplied arguments
+under the supervision of Dr. Memory but does not interact with it
+afterwards. Therefore an unlimited number of calls to its run() method
+can be made to e.g. check if input files are generated correctly by
+the selected mutator or if process creation and termination work as
+intended.
+
+A typical command line for the mock runner might look like this:
+
+$ foozzer.py -v -v -i /tmp/in -o /tmp/out -D /usr/local/bin/DrMemory-Linux-2.3.0-1/bin64/ -m dry_run -r mock -- -t /usr/bin/tail -- -f /dev/null
 
 
 License

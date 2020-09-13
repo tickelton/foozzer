@@ -34,6 +34,7 @@ Options:
 
 import os
 import sys
+import shutil
 import argparse
 import importlib
 import pkgutil
@@ -96,6 +97,11 @@ def clear_queue(queue, outfile):
 def startall(queue, drmemory_bin, target_cmdline):
     """Starts fuzzee child process and thread for STDOUT queue."""
 
+    logger.debug(
+        'startall: drmemory_bin=%s target_cmdline=%s',
+        drmemory_bin,
+        target_cmdline
+    )
     drmem = Popen(
         [drmemory_bin, DRMEMORY_PARAMS, '--'] + target_cmdline,
         stdout=PIPE,
@@ -214,6 +220,10 @@ def do_parse_args(args, mutators, runners):
         choices = [m for m in runners],
         help='runner to use'
     )
+    parser.add_argument(
+        '-f',
+        help='filename as seen by target process'
+    )
     parser.add_argument('runner_args', nargs=argparse.REMAINDER)
     return parser.parse_args(args)
 
@@ -244,7 +254,6 @@ def main(args=None):
 
     logger.info('Opening logfile')
     log_outfile = open(os.path.join(args.o, LOG_OUTFILE), 'a')
-    logger.debug('FPLInFILE()')
     runfile_path = os.path.join(args.o, RUNFILE)
     pausefile_path = os.path.join(args.o, PAUSEFILE)
     mutator = input_mutator(args.i, args.o)
@@ -282,6 +291,16 @@ def main(args=None):
             logger.info('pausing...')
         while os.path.isfile(pausefile_path):
             sleep(1)
+
+        if args.f:
+            # If a specific filename was requested for the target
+            # appliction with the argument '-f', copy the file the
+            # mutator generated to that destination.
+            shutil.copyfile(
+                os.path.join(args.o, input_file),
+                os.path.join(args.o, args.f)
+            )
+            input_file = args.f
 
         logger.debug('Iteration: %s\n', state_msg)
         log_outfile.flush()
