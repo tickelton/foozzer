@@ -44,6 +44,7 @@ from time import sleep
 from subprocess import PIPE, STDOUT, Popen
 from threading  import Thread
 from queue import Queue, Empty
+from typing import List, Dict, Tuple, Any, TextIO
 
 import foozzer.mutators
 import foozzer.runners
@@ -74,14 +75,14 @@ logger.addHandler(handler)
 logger.setLevel(logging.ERROR)
 
 
-def enqueue_output(out, queue):
+def enqueue_output(out: TextIO, queue) -> None:
     """Helper function for non-blocking reading of child STDOUT."""
 
     for line in iter(out.readline, ''):
         queue.put(line)
     out.close()
 
-def clear_queue(queue, outfile):
+def clear_queue(queue, outfile: TextIO) -> None:
     """Helper function for non-blocking reading of child STDOUT."""
 
     while True:
@@ -94,7 +95,7 @@ def clear_queue(queue, outfile):
             outfile.write(line)
 
 
-def startall(queue, drmemory_bin, target_cmdline):
+def startall(queue, drmemory_bin: str, target_cmdline: List[str]):
     """Starts fuzzee child process and thread for STDOUT queue."""
 
     logger.debug(
@@ -121,7 +122,7 @@ def startall(queue, drmemory_bin, target_cmdline):
 
     return drmem, qthread
 
-def stop_processes(target):
+def stop_processes(target: str) -> None:
     """Stops fuzzee and Dr.Memrory processes, if running."""
 
     if ON_POSIX:
@@ -131,7 +132,7 @@ def stop_processes(target):
         sleep(2)
         os.system('taskkill /t /im drmemory.exe')
 
-def stopall(qthread, target):
+def stopall(qthread: Thread, target: str) -> None:
     """Stops child processes and queue thread."""
 
     stop_processes(target)
@@ -144,6 +145,7 @@ class ActionListPlugins(argparse.Action):
     def __init__(self, option_strings, dest, const, **kwargs):
         self._descriptions = const
         super().__init__(option_strings, dest, **kwargs)
+
     def __call__(self, parser, namespace, values, option_string=None):
         for plugin_type in self._descriptions:
             print('\n{}:\n'.format(plugin_type))
@@ -157,7 +159,8 @@ def iter_namespace(ns_pkg):
 
     return pkgutil.iter_modules(ns_pkg.__path__, ns_pkg.__name__ + ".")
 
-def discover_plugins(namespc):
+# TODO: Replace 'Any' with proper type
+def discover_plugins(namespc) -> Dict[str, Tuple[str, Any]]:
     """
     Discovers mutator and runner plugins.
 
@@ -178,7 +181,7 @@ def discover_plugins(namespc):
 
     return plugins
 
-def do_parse_args(args, mutators, runners):
+def do_parse_args(args, mutators, runners) -> argparse.Namespace:
     """Argument parsing helper function."""
 
     parser = argparse.ArgumentParser()
@@ -227,7 +230,7 @@ def do_parse_args(args, mutators, runners):
     parser.add_argument('runner_args', nargs=argparse.REMAINDER)
     return parser.parse_args(args)
 
-def main(args=None):
+def main(args=None) -> None:
     """foozzer.py main function"""
 
     mutators = discover_plugins(foozzer.mutators)

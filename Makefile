@@ -6,6 +6,7 @@ help:
 	@echo "available targets:"
 	@echo "help             :    print this help message"
 	@echo "pylint           :    run pylint"
+	@echo "mypy             :    run mypy"
 	@echo "test             :    run all unit tests"
 	@echo "requirements.txt :    create requirements.txt"
 	@echo "run              :    example of all required arguments"
@@ -15,6 +16,9 @@ requirements.txt:
 
 pylint:
 	pipenv run pylint foozzer.py
+
+mypy:
+	pipenv run mypy --strict foozzer.py
 
 test:
 	pipenv run python -m unittest discover -v
