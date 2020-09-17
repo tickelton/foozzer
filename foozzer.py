@@ -44,7 +44,7 @@ from time import sleep
 from subprocess import PIPE, STDOUT, Popen
 from threading  import Thread
 from queue import Queue, Empty
-from typing import List, Dict, Tuple, Any, TextIO
+from typing import List, Dict, Tuple, Any, TextIO, Union, Sequence, Optional, Generator
 
 import foozzer.mutators
 import foozzer.runners
@@ -75,14 +75,14 @@ logger.addHandler(handler)
 logger.setLevel(logging.ERROR)
 
 
-def enqueue_output(out: TextIO, queue) -> None:
+def enqueue_output(out: TextIO, queue: 'Queue[str]') -> None:
     """Helper function for non-blocking reading of child STDOUT."""
 
     for line in iter(out.readline, ''):
         queue.put(line)
     out.close()
 
-def clear_queue(queue, outfile: TextIO) -> None:
+def clear_queue(queue: 'Queue[str]', outfile: TextIO) -> None:
     """Helper function for non-blocking reading of child STDOUT."""
 
     while True:
@@ -95,7 +95,7 @@ def clear_queue(queue, outfile: TextIO) -> None:
             outfile.write(line)
 
 
-def startall(queue, drmemory_bin: str, target_cmdline: List[str]):
+def startall(queue: 'Queue[str]', drmemory_bin: str, target_cmdline: List[str]) -> Tuple['Popen[str]', Thread]:
     """Starts fuzzee child process and thread for STDOUT queue."""
 
     logger.debug(
@@ -146,7 +146,7 @@ class ActionListPlugins(argparse.Action):
         self._descriptions = const
         super().__init__(option_strings, dest, **kwargs)
 
-    def __call__(self, parser, namespace, values, option_string=None):
+    def __call__(self, parser, namespace, values, option_string):
         for plugin_type in self._descriptions:
             print('\n{}:\n'.format(plugin_type))
             for k, val in self._descriptions[plugin_type].items():
@@ -171,7 +171,7 @@ def discover_plugins(namespc) -> Dict[str, Tuple[str, Any]]:
 
     for finder, name, ispkg in iter_namespace(namespc):
         try:
-            plugins.update(importlib.import_module(name).get_module_info())
+            plugins.update(importlib.import_module(name).get_module_info()) # type: ignore
         except AttributeError:
             # If the module does not provide a get_module_info function
             # it is probably an abstract base class or utility library.
@@ -251,7 +251,7 @@ def main(args=None) -> None:
 
     stop_processes(target_process)
 
-    queue = Queue()
+    queue: 'Queue[str]' = Queue()
 
     drmem, qthread = startall(queue, os.path.join(args.D, DRMEMORY_BIN), runner.get_cmdline())
 

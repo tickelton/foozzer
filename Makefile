@@ -18,7 +18,7 @@ pylint:
 	pipenv run pylint foozzer.py
 
 mypy:
-	pipenv run mypy --strict foozzer.py
+	pipenv run mypy foozzer.py
 
 test:
 	pipenv run python -m unittest discover -v
