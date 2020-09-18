@@ -55,7 +55,7 @@ class FPLBasicMutatorTests(unittest.TestCase):
         info = foozzer.mutators.fpl_basic.get_module_info()
 
         self.assertIn('fpl_basic', info.keys())
-        self.assertEqual(info['fpl_basic'][0], 'BasicMutator Description')
+        self.assertEqual(info['fpl_basic'][0], 'Modifies individual bytes in the input file')
         self.assertIs(info['fpl_basic'][1], foozzer.mutators.fpl_basic.FPLBasicMutator)
 
     def test_empty_in_dir(self):

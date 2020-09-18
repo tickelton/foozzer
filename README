@@ -64,6 +64,9 @@ a single byte on each run.
 input files in 32 bit increments and sets each 32 bit
 value to different extreme values.
 
+'bitflip' iteratively flips every single bit in the
+input file.
+
 Installation and Dependencies
 -----------------------------
 
