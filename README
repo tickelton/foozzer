@@ -31,7 +31,7 @@ The basic concept behind Foozzer is as follows:
   target the fuzzing process is reset to a known good
   state and continued with the next iteration of the
   mutator.
-* Since interating with the main process might be
+* Since interaction with the main process might be
   inhibited by certain types of runners, e.g. ones
   the cause high frequency mouse and keyboard
   operations, the process can be controlled via
@@ -48,7 +48,7 @@ Available plugins
 
 Foozzer comes with a runner plugin for fuzzing the
 playlist loader of foobar2000 as well as a mock runner
-for testing and two example mutators, 'dry_run' and 'fpl_basic'.
+for testing and the following example mutators:
 
 'dry_run' only executes a single run with the
 unmodified input file. This mutator should be used to
@@ -60,6 +60,9 @@ that should also work well on most other types of files.
 It iterates over an input file and successively modifies
 a single byte on each run.
 
+'dword' is a generic mutator that iterates through
+input files in 32 bit increments and sets each 32 bit
+value to different extreme values.
 
 Installation and Dependencies
 -----------------------------
@@ -104,7 +107,8 @@ $ python foozzer.py -L
     Mutators:
     
       dry_run : Single run with the first file in the input directory and not mutations applied
-      fpl_basic : BasicMutator Description
+      dword : Iterates through file in 32 bit increments
+      fpl_basic : Modifies individual bytes in the input file
     
     
     Runners:
